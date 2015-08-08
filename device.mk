@@ -311,12 +311,9 @@ PRODUCT_PROPERTY_OVERRIDES += \
     wifi.interface=wlan0 \
     wifi.supplicant_scan_interval=15
 
-# Do not power down SIM card when modem is sent to Low Power Mode.
-PRODUCT_PROPERTY_OVERRIDES += \
-    persist.radio.apm_sim_not_pwdn=1
-
 # LTE, CDMA, GSM/WCDMA
 PRODUCT_PROPERTY_OVERRIDES += \
+    ro.ril.force_eri_from_xml=true \
     ro.telephony.default_network=10 \
     telephony.lteOnCdmaDevice=1 \
     persist.radio.mode_pref_nv10=1
