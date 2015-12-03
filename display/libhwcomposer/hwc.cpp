@@ -198,6 +198,18 @@ static void setNumActiveDisplays(hwc_context_t *ctx, int numDisplays,
     }
 }
 
+static bool validDisplay(int disp) {
+    switch(disp) {
+        case HWC_DISPLAY_PRIMARY:
+        case HWC_DISPLAY_EXTERNAL:
+        case HWC_DISPLAY_VIRTUAL:
+            return true;
+            break;
+        default:
+            return false;
+    }
+}
+
 static bool isHotPluggable(hwc_context_t *ctx, int dpy) {
     return ((dpy == HWC_DISPLAY_EXTERNAL) ||
             ((dpy == HWC_DISPLAY_PRIMARY) &&
@@ -347,6 +359,10 @@ static int hwc_eventControl(struct hwc_composer_device_1* dev, int dpy,
     ATRACE_CALL();
     int ret = 0;
     hwc_context_t* ctx = (hwc_context_t*)(dev);
+    if(!validDisplay(dpy)) {
+        return -EINVAL;
+    }
+
     switch(event) {
         case HWC_EVENT_VSYNC:
             if (ctx->vstate.enable == enable)
@@ -357,7 +373,7 @@ static int hwc_eventControl(struct hwc_composer_device_1* dev, int dpy,
             ALOGD_IF (VSYNC_DEBUG, "VSYNC state changed to %s",
                       (enable)?"ENABLED":"DISABLED");
             break;
-#ifdef QCOM_BSP
+#ifdef QTI_BSP
         case  HWC_EVENT_ORIENTATION:
             if(dpy == HWC_DISPLAY_PRIMARY) {
                 Locker::Autolock _l(ctx->mDrawLock);
@@ -380,6 +396,10 @@ static int hwc_setPowerMode(struct hwc_composer_device_1* dev, int dpy,
     int ret = 0, value = 0;
 
     Locker::Autolock _l(ctx->mDrawLock);
+    if(!validDisplay(dpy)) {
+        return -EINVAL;
+    }
+
     /* In case of non-hybrid WFD session, we are fooling SF by
      * piggybacking on HDMI display ID for virtual.
      * TODO: Not needed once we have WFD client working on top
@@ -403,6 +423,8 @@ static int hwc_setPowerMode(struct hwc_composer_device_1* dev, int dpy,
             // to send black frame to WFD sink on power suspend.
             // Note: With this change, we keep the WriteBack object
             // alive on power suspend for AD use case.
+            // Instead, we now clear the writeback and associated pipes
+            // when the primary display is unblanking.
             value = FB_BLANK_POWERDOWN;
             break;
         case HWC_POWER_MODE_DOZE:
@@ -411,13 +433,29 @@ static int hwc_setPowerMode(struct hwc_composer_device_1* dev, int dpy,
             value = FB_BLANK_NORMAL;
             break;
         case HWC_POWER_MODE_DOZE_SUSPEND:
-            // TODO: Use FB_BLANK_VSYNC_SUSPEND here to map to doze_suspend
-            // This definition is specific to our fbdev implementation.
-            value = FB_BLANK_NORMAL;
+            // FB_BLANK_VSYNC_SUSPEND is being used here to map to doze_suspend
+            // This definition is specific to our fbdev implementation
+            value = FB_BLANK_VSYNC_SUSPEND;
             break;
         case HWC_POWER_MODE_NORMAL:
             value = FB_BLANK_UNBLANK;
             break;
+    }
+
+    // XXX: Workaround
+    // Clear writeback and all overlays when primary is unblanking,
+    // since the kernel may have internally reset writeback in XO shutdown.
+    // This is to maintain consistency with the kernel's internal state and
+    // not assume that we have a valid writeback object when unblanking primary
+    // Ideally, we should get an explicit blank on the virtual display
+    // or, the blank frames when the virtual display is blanking should
+    // be sent _before_ the primary is unblanked
+    if (dpy == HWC_DISPLAY_PRIMARY && not (mode == HWC_POWER_MODE_OFF ||
+                mode == HWC_POWER_MODE_NORMAL)) {
+        ctx->mOverlay->configBegin();
+        ctx->mOverlay->configDone();
+        ctx->mRotMgr->clear();
+        Writeback::clear();
     }
 
     switch(dpy) {
@@ -435,8 +473,8 @@ static int hwc_setPowerMode(struct hwc_composer_device_1* dev, int dpy,
             ctx->mHPDEnabled = true;
         }
 
-        ctx->dpyAttr[dpy].isActive = not(mode == HWC_POWER_MODE_OFF);
-	//TODO: Fix this when doze suspend is fixed
+        ctx->dpyAttr[dpy].isActive = not(mode == HWC_POWER_MODE_OFF ||
+                mode == HWC_POWER_MODE_DOZE_SUSPEND);
 
         if(ctx->mVirtualonExtActive) {
             /* if mVirtualonExtActive is true, display hal will
@@ -613,7 +651,6 @@ static int hwc_set_external(hwc_context_t *ctx,
 
     const int dpy = HWC_DISPLAY_EXTERNAL;
 
-
     if (LIKELY(list) && ctx->dpyAttr[dpy].isActive &&
         ctx->dpyAttr[dpy].connected &&
         !ctx->dpyAttr[dpy].isPause) {
@@ -697,8 +734,12 @@ int hwc_getDisplayConfigs(struct hwc_composer_device_1* dev, int disp,
         uint32_t* configs, size_t* numConfigs) {
     hwc_context_t* ctx = (hwc_context_t*)(dev);
 
-    disp = getDpyforExternalDisplay(ctx, disp);
     Locker::Autolock _l(ctx->mDrawLock);
+    if(!validDisplay(disp)) {
+        return -EINVAL;
+    }
+
+    disp = getDpyforExternalDisplay(ctx, disp);
     bool hotPluggable = isHotPluggable(ctx, disp);
     bool isVirtualDisplay = (disp == HWC_DISPLAY_VIRTUAL);
     // If hotpluggable or virtual displays are inactive return error
@@ -737,8 +778,13 @@ int hwc_getDisplayAttributes(struct hwc_composer_device_1* dev, int disp,
 
     hwc_context_t* ctx = (hwc_context_t*)(dev);
 
-    disp = getDpyforExternalDisplay(ctx, disp);
     Locker::Autolock _l(ctx->mDrawLock);
+    if(!validDisplay(disp)) {
+        return -EINVAL;
+    }
+
+    disp = getDpyforExternalDisplay(ctx, disp);
+
     bool hotPluggable = isHotPluggable(ctx, disp);
     bool isVirtualDisplay = (disp == HWC_DISPLAY_VIRTUAL);
     // If hotpluggable or virtual displays are inactive return error
@@ -754,7 +800,9 @@ int hwc_getDisplayAttributes(struct hwc_composer_device_1* dev, int disp,
         HWC_DISPLAY_HEIGHT,
         HWC_DISPLAY_DPI_X,
         HWC_DISPLAY_DPI_Y,
+#ifdef GET_DISPLAY_SECURE_STATUS_FROM_HWC
         HWC_DISPLAY_SECURE,
+#endif
         HWC_DISPLAY_NO_ATTRIBUTE,
     };
 
@@ -794,9 +842,11 @@ int hwc_getDisplayAttributes(struct hwc_composer_device_1* dev, int disp,
         case HWC_DISPLAY_DPI_Y:
             values[i] = (int32_t) (ctx->dpyAttr[disp].ydpi*1000.0);
             break;
+#ifdef GET_DISPLAY_SECURE_STATUS_FROM_HWC
         case HWC_DISPLAY_SECURE:
             values[i] = (int32_t) (ctx->dpyAttr[disp].secure);
             break;
+#endif
         default:
             ALOGE("Unknown display attribute %d",
                     attributes[i]);
@@ -839,6 +889,10 @@ int hwc_getActiveConfig(struct hwc_composer_device_1* dev, int disp)
     hwc_context_t* ctx = (hwc_context_t*)(dev);
 
     Locker::Autolock _l(ctx->mDrawLock);
+    if(!validDisplay(disp)) {
+        return -EINVAL;
+    }
+
     bool hotPluggable = isHotPluggable(ctx, disp);
     bool isVirtualDisplay = (disp == HWC_DISPLAY_VIRTUAL);
     // If hotpluggable or virtual displays are inactive return error
@@ -862,6 +916,10 @@ int hwc_setActiveConfig(struct hwc_composer_device_1* dev, int disp, int index)
     int status;
 
     Locker::Autolock _l(ctx->mDrawLock);
+    if(!validDisplay(disp)) {
+        return -EINVAL;
+    }
+
     bool hotPluggable = isHotPluggable(ctx, disp);
     bool isVirtualDisplay = (disp == HWC_DISPLAY_VIRTUAL);
 
@@ -913,7 +971,7 @@ static int hwc_device_open(const struct hw_module_t* module, const char* name,
 
         //Setup HWC methods
         dev->device.common.tag          = HARDWARE_DEVICE_TAG;
-        dev->device.common.version      = HWC_DEVICE_API_VERSION_1_4;
+        dev->device.common.version      = HWC_DEVICE_API_VERSION_1_5;
         dev->device.common.module       = const_cast<hw_module_t*>(module);
         dev->device.common.close        = hwc_device_close;
         dev->device.prepare             = hwc_prepare;

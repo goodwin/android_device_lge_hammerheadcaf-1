@@ -48,10 +48,14 @@ PRODUCT_COPY_FILES += \
     frameworks/av/media/libstagefright/data/media_codecs_google_telephony.xml:system/etc/media_codecs_google_telephony.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_video.xml:system/etc/media_codecs_google_video.xml \
     $(LOCAL_PATH)/media_codecs.xml:system/etc/media_codecs.xml \
+    $(LOCAL_PATH)/media_codecs_performance.xml:system/etc/media_codecs_performance.xml \
     $(LOCAL_PATH)/media_profiles.xml:system/etc/media_profiles.xml
 
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/bcmdhd.cal:system/etc/wifi/bcmdhd.cal
+
+PRODUCT_COPY_FILES += \
+    device/lge/hammerheadcaf/bluetooth/BCM4339_003.001.009.0079.0339.hcd:$(TARGET_COPY_OUT_VENDOR)/firmware/bcm4335c0.hcd
 
 # These are the hardware-specific features
 PRODUCT_COPY_FILES += \
@@ -77,7 +81,7 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.audio.low_latency.xml:system/etc/permissions/android.hardware.audio.low_latency.xml \
     frameworks/native/data/etc/android.hardware.bluetooth_le.xml:system/etc/permissions/android.hardware.bluetooth_le.xml \
     frameworks/native/data/etc/android.hardware.telephony.cdma.xml:system/etc/permissions/android.hardware.telephony.cdma.xml \
-    frameworks/native/data/etc/android.hardware.ethernet.xml:system/etc/permissions/android.hardware.ethernet.xml
+    frameworks/native/data/etc/android.software.midi.xml:system/etc/permissions/android.software.midi.xml
 
 # For GPS
 PRODUCT_COPY_FILES += \
@@ -108,11 +112,6 @@ PRODUCT_PACKAGES := \
     wpa_supplicant \
     wpa_supplicant.conf
 
-# Live Wallpapers
-PRODUCT_PACKAGES += \
-    LiveWallpapersPicker \
-    librs_jni
-
 # Graphics
 PRODUCT_PACKAGES += \
     copybit.msm8974 \
@@ -134,7 +133,9 @@ PRODUCT_PACKAGES += \
     libOmxVdecHevc \
     libOmxVenc \
     libstagefrighthw \
-    qcmediaplayer
+    libqcmediaplayer \
+    qcmediaplayer \
+    libextmedia_jni
 
 PRODUCT_BOOT_JARS += \
     qcmediaplayer
@@ -151,17 +152,14 @@ PRODUCT_PACKAGES += \
 
 PRODUCT_PROPERTY_OVERRIDES += \
     media.aac_51_output_enabled=true \
-    mm.enable.qcom_parser=3310129 \
     ro.qc.sdk.audio.fluencetype=fluence \
     persist.audio.fluence.voicecall=true \
     persist.audio.fluence.audiorec=true \
     audio.offload.buffer.size.kb=32 \
     audio.offload.gapless.enabled=true \
-    av.offload.enable=true \
-    av.streaming.offload.enable=true \
+    audio.offload.video=true \
     audio.offload.pcm.16bit.enable=true \
-    audio.offload.pcm.24bit.enable=true \
-    tunnel.audio.encode=true
+    audio.offload.pcm.24bit.enable=true
 
 # Audio effects
 PRODUCT_PACKAGES += \
@@ -290,6 +288,7 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.qti.sensors.tap=false \
     ro.qti.sensors.facing=false \
     ro.qti.sensors.tilt=false \
+    ro.qti.sensors.tilt_detector=true \
     ro.qti.sensors.amd=false \
     ro.qti.sensors.rmd=false \
     ro.qti.sensors.vmd=false \
@@ -336,7 +335,8 @@ PRODUCT_DEFAULT_PROPERTY_OVERRIDES += \
 
 # If data_no_toggle is 1 then active and dormancy enable at all times.
 # If data_no_toggle is 0 there are no reports if the screen is off.
-PRODUCT_PROPERTY_OVERRIDES += \
+# Leaving this property unset defaults to '0'
+#PRODUCT_PROPERTY_OVERRIDES += \
     persist.radio.data_no_toggle=1
 
 # Setup custom emergency number list based on the MCC. This is needed by RIL
@@ -346,10 +346,6 @@ PRODUCT_PROPERTY_OVERRIDES += \
 # set default USB configuration
 PRODUCT_DEFAULT_PROPERTY_OVERRIDES += \
     persist.sys.usb.config=mtp
-
-# set USB OTG enabled to add support for USB storage type
-PRODUCT_PROPERTY_OVERRIDES += \
-    persist.sys.isUsbOtgEnabled=1
 
 # Request modem to send PLMN name always irrespective
 # of display condition in EFSPN.
@@ -371,6 +367,9 @@ PRODUCT_DEFAULT_PROPERTY_OVERRIDES += \
 # Input resampling configuration
 PRODUCT_PROPERTY_OVERRIDES += \
     ro.input.noresample=1
+
+PRODUCT_PROPERTY_OVERRIDES += \
+    dalvik.vm.dex2oat-swap=false
 
 # Modem debugger
 ifneq (,$(filter userdebug eng, $(TARGET_BUILD_VARIANT)))
