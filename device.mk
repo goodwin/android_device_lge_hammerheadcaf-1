@@ -247,7 +247,8 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.sf.lcd_density=480
 
 PRODUCT_PROPERTY_OVERRIDES += \
-    persist.hwc.mdpcomp.enable=true
+    persist.hwc.mdpcomp.enable=true \
+    persist.mdpcomp_perfhint=50
 
 PRODUCT_PROPERTY_OVERRIDES += \
     ro.hwui.texture_cache_size=72 \
@@ -336,7 +337,9 @@ PRODUCT_DEFAULT_PROPERTY_OVERRIDES += \
 # If data_no_toggle is 1 then active and dormancy enable at all times.
 # If data_no_toggle is 0 there are no reports if the screen is off.
 # Leaving this property unset defaults to '0'
-#PRODUCT_PROPERTY_OVERRIDES += \
+# Due to RIL changes, setting this to 1 now enables toggling of limited
+# system indications and does not impact data state changes.
+PRODUCT_PROPERTY_OVERRIDES += \
     persist.radio.data_no_toggle=1
 
 # Setup custom emergency number list based on the MCC. This is needed by RIL
@@ -369,7 +372,8 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.input.noresample=1
 
 PRODUCT_PROPERTY_OVERRIDES += \
-    dalvik.vm.dex2oat-swap=false
+    dalvik.vm.dex2oat-swap=false \
+    dalvik.vm.heapminfree=2m
 
 # Modem debugger
 ifneq (,$(filter userdebug eng, $(TARGET_BUILD_VARIANT)))
